@@ -1,197 +1,363 @@
 
-"use strict";
+document.addEventListener("DOMContentLoaded", () => {
 
-const form = document.getElementById("predictionForm");
-const predictBtn = document.getElementById("predictBtn");
-const btnText = document.getElementById("btnText");
+    const churnForm = document.getElementById("churnForm");
+    const predictBtn = document.getElementById("predictBtn");
 
-const resultPlaceholder = document.getElementById("resultPlaceholder");
-const result = document.getElementById("result");
-const errorBox = document.getElementById("errorBox");
+    const emptyState = document.getElementById("emptyState");
+    const loadingState = document.getElementById("loadingState");
+    const resultContent = document.getElementById("resultContent");
+    const errorState = document.getElementById("errorState");
 
-const predictionText = document.getElementById("predictionText");
-const probabilityText = document.getElementById("probabilityText");
-const riskLabel = document.getElementById("riskLabel");
-const probabilityBar = document.getElementById("probabilityBar");
-const resultMessage = document.getElementById("resultMessage");
+    const predictionText = document.getElementById("predictionText");
+    const predictionBadge = document.getElementById("predictionBadge");
+    const resultDescription = document.getElementById("resultDescription");
 
-function showError(message) {
-    errorBox.textContent = message;
-    errorBox.hidden = false;
-}
+    const probabilityValue = document.getElementById("probabilityValue");
+    const probabilityBar = document.getElementById("probabilityBar");
 
-function hideError() {
-    errorBox.textContent = "";
-    errorBox.hidden = true;
-}
+    const errorMessage = document.getElementById("errorMessage");
 
-function setLoading(loading) {
-    predictBtn.disabled = loading;
-    btnText.textContent = loading
-        ? "Analyzing..."
-        : "Analyze Customer ↗";
-}
 
-// Only send the 7 features required by the ML model
-function getCustomerData() {
-    const formData = new FormData(form);
-
-    return {
-        Contract: formData.get("Contract"),
-        tenure: Number(formData.get("tenure")),
-        MonthlyCharges: Number(formData.get("MonthlyCharges")),
-        InternetService: formData.get("InternetService"),
-        PaymentMethod: formData.get("PaymentMethod"),
-        PaperlessBilling: formData.get("PaperlessBilling"),
-        TechSupport: formData.get("TechSupport")
-    };
-}
-
-function resetResult() {
-    result.hidden = true;
-    resultPlaceholder.hidden = false;
-    probabilityBar.style.width = "0%";
-}
-
-function displayPrediction(data) {
-    const probability = Number(data.churn_probability);
-
-    if (
-        data.churn_prediction === undefined ||
-        !Number.isFinite(probability) ||
-        probability < 0 ||
-        probability > 1
-    ) {
-        throw new Error("Invalid prediction response from the server.");
-    }
-
-    const isChurn = Number(data.churn_prediction) === 1;
-    const percentage = probability * 100;
-
-    resultPlaceholder.hidden = true;
-    result.hidden = false;
-
-    predictionText.textContent = isChurn
-        ? "Churn Risk Detected"
-        : "Customer Likely to Stay";
-
-    predictionText.style.color = isChurn ? "#fb7185" : "#34d399";
-
-    probabilityText.textContent = `${percentage.toFixed(1)}%`;
-
-    riskLabel.textContent = isChurn
-        ? "CHURN PREDICTED"
-        : "NO CHURN PREDICTED";
-
-    riskLabel.style.color = isChurn ? "#fb7185" : "#34d399";
-
-    riskLabel.style.background = isChurn
-        ? "rgba(251, 113, 133, 0.10)"
-        : "rgba(52, 211, 153, 0.10)";
-
-    riskLabel.style.borderColor = isChurn
-        ? "rgba(251, 113, 133, 0.25)"
-        : "rgba(52, 211, 153, 0.25)";
-
-    resultMessage.textContent = isChurn
-        ? "The model predicts churn for this customer. Review their contract, service experience and support needs."
-        : "The model predicts that this customer will stay. Continue monitoring satisfaction and engagement.";
-
-    if (data.threshold !== undefined) {
-        resultMessage.textContent +=
-            ` Decision threshold: ${Number(data.threshold).toFixed(2)}.`;
-    }
-
-    requestAnimationFrame(() => {
-        probabilityBar.style.width = `${percentage}%`;
-    });
-}
-
-async function predictChurn(customerData) {
-    const response = await fetch("/predict", {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json"
-        },
-        body: JSON.stringify(customerData)
-    });
-
-    let data;
-
-    try {
-        data = await response.json();
-    } catch {
-        throw new Error(`Server response error (HTTP ${response.status}).`);
-    }
-
-    if (!response.ok) {
-        const detail = data.detail;
-
-        const message = Array.isArray(detail)
-            ? detail.map(item => item.msg || JSON.stringify(item)).join(", ")
-            : detail || "Prediction request failed.";
-
-        throw new Error(String(message));
-    }
-
-    return data;
-}
-
-form.addEventListener("submit", async (event) => {
-    event.preventDefault();
-
-    hideError();
-
-    if (!form.checkValidity()) {
-        form.reportValidity();
+    // Check required HTML elements
+    if (!churnForm || !predictBtn) {
+        console.error("ChurnIQ: Required HTML elements not found.");
         return;
     }
 
-    const customerData = getCustomerData();
 
-    if (
-        !Number.isFinite(customerData.tenure) ||
-        customerData.tenure < 0 ||
-        customerData.tenure > 100
-    ) {
-        showError("Tenure must be between 0 and 100 months.");
-        return;
+    // Show different result states
+    function showState(state) {
+
+        [
+            emptyState,
+            loadingState,
+            resultContent,
+            errorState
+        ].forEach(element => {
+
+            if (element) {
+                element.classList.add("hidden");
+            }
+
+        });
+
+        const states = {
+            empty: emptyState,
+            loading: loadingState,
+            result: resultContent,
+            error: errorState
+        };
+
+        if (states[state]) {
+            states[state].classList.remove("hidden");
+        }
+
     }
 
-    if (
-        !Number.isFinite(customerData.MonthlyCharges) ||
-        customerData.MonthlyCharges < 0
-    ) {
-        showError("Please enter valid Monthly Charges.");
-        return;
+
+    // Collect customer information
+    function getCustomerData() {
+
+        return {
+
+            Contract:
+                document.getElementById("Contract").value,
+
+            tenure:
+                Number(document.getElementById("tenure").value),
+
+            MonthlyCharges:
+                Number(document.getElementById("MonthlyCharges").value),
+
+            InternetService:
+                document.getElementById("InternetService").value,
+
+            PaymentMethod:
+                document.getElementById("PaymentMethod").value,
+
+            PaperlessBilling:
+                document.getElementById("PaperlessBilling").value,
+
+            TechSupport:
+                document.getElementById("TechSupport").value
+
+        };
+
     }
 
-    setLoading(true);
-    resetResult();
 
-    try {
-        console.log("Sending customer data:", customerData);
+    // Display prediction result
+    function displayResult(data) {
 
-        const data = await predictChurn(customerData);
+        const prediction = data.churn_prediction;
 
-        console.log("Prediction response:", data);
+        const probability = Number(data.churn_probability);
 
-        displayPrediction(data);
+        if (
+            prediction === undefined ||
+            !Number.isFinite(probability)
+        ) {
 
-    } catch (error) {
-        console.error("Prediction error:", error);
+            throw new Error(
+                "Invalid prediction response received from API."
+            );
 
-        showError(
-            error.message ||
-            "Unable to connect to the prediction API. Check that FastAPI is running."
+        }
+
+
+        // Convert decimal probability into percentage
+        const probabilityPercent =
+            probability <= 1
+                ? probability * 100
+                : probability;
+
+
+        if (
+            probabilityPercent < 0 ||
+            probabilityPercent > 100
+        ) {
+
+            throw new Error(
+                "Invalid churn probability received from API."
+            );
+
+        }
+
+
+        // Identify prediction
+        const predictionValue =
+            String(prediction).toLowerCase();
+
+        const isChurn =
+            predictionValue === "1" ||
+            predictionValue === "true" ||
+            predictionValue === "yes" ||
+            predictionValue === "churn";
+
+
+        // Update result styles
+        predictionText.classList.toggle(
+            "churn-text",
+            isChurn
         );
 
-    } finally {
-        setLoading(false);
+        predictionBadge.classList.toggle(
+            "churn",
+            isChurn
+        );
+
+        probabilityBar.classList.toggle(
+            "churn-fill",
+            isChurn
+        );
+
+
+        // Churn prediction
+        if (isChurn) {
+
+            predictionText.textContent =
+                "High Churn Risk";
+
+            predictionBadge.textContent =
+                "CHURN PREDICTED";
+
+            resultDescription.textContent =
+                "The model indicates an increased likelihood that this customer may leave the service. Consider reviewing suitable retention actions.";
+
+        }
+
+        // No churn prediction
+        else {
+
+            predictionText.textContent =
+                "Customer Retained";
+
+            predictionBadge.textContent =
+                "NO CHURN PREDICTED";
+
+            resultDescription.textContent =
+                "The model indicates that this customer is more likely to continue using the service.";
+
+        }
+
+
+        // Update probability
+        probabilityValue.textContent =
+            probabilityPercent.toFixed(1) + "%";
+
+
+        // Animate probability bar
+        probabilityBar.style.width = "0%";
+
+        requestAnimationFrame(() => {
+
+            probabilityBar.style.width =
+                probabilityPercent + "%";
+
+        });
+
+
+        showState("result");
+
     }
+
+
+    // Handle form submission
+    churnForm.addEventListener("submit", async (event) => {
+
+        event.preventDefault();
+
+        if (!churnForm.reportValidity()) {
+            return;
+        }
+
+
+        const customerData = getCustomerData();
+
+
+        // Loading button
+        predictBtn.disabled = true;
+
+        predictBtn.innerHTML = `
+            <span class="button-spinner"></span>
+            <span>Analysing...</span>
+        `;
+
+
+        showState("loading");
+
+
+        try {
+
+            // Send request to FastAPI
+            const response = await fetch("/predict", {
+
+                method: "POST",
+
+                headers: {
+
+                    "Content-Type": "application/json",
+                    "Accept": "application/json"
+
+                },
+
+                body: JSON.stringify(customerData)
+
+            });
+
+
+            // Handle API errors
+            if (!response.ok) {
+
+                let message =
+                    `Prediction request failed (${response.status}).`;
+
+                try {
+
+                    const errorData = await response.json();
+
+                    if (errorData.detail) {
+
+                        message =
+                            typeof errorData.detail === "string"
+                                ? errorData.detail
+                                : JSON.stringify(errorData.detail);
+
+                    }
+
+                } catch (_) {
+
+                    // Keep default error message
+
+                }
+
+                throw new Error(message);
+
+            }
+
+
+            // Get prediction response
+            const data = await response.json();
+
+
+            // Display prediction
+            displayResult(data);
+
+
+            console.log(
+                "ChurnIQ Prediction:",
+                data
+            );
+
+
+        }
+
+        catch (error) {
+
+            console.error(
+                "Prediction Error:",
+                error
+            );
+
+            errorMessage.textContent =
+                error.message ||
+                "Unable to connect to the prediction server.";
+
+            showState("error");
+
+        }
+
+        finally {
+
+            // Restore button
+            predictBtn.disabled = false;
+
+            predictBtn.innerHTML = `
+                <i data-lucide="sparkles"></i>
+                <span>Analyse Customer</span>
+                <i data-lucide="arrow-right"></i>
+            `;
+
+            if (window.lucide) {
+                lucide.createIcons();
+            }
+
+        }
+
+    });
+
+
+    // Reset form and result
+    churnForm.addEventListener("reset", () => {
+
+        setTimeout(() => {
+
+            probabilityBar.style.width = "0%";
+
+            probabilityValue.textContent = "0%";
+
+            predictionText.classList.remove("churn-text");
+
+            predictionBadge.classList.remove("churn");
+
+            probabilityBar.classList.remove("churn-fill");
+
+            showState("empty");
+
+        }, 0);
+
+    });
+
+
+    // Initialize icons
+    if (window.lucide) {
+        lucide.createIcons();
+    }
+
+
+    console.log(
+        "ChurnIQ Modern Dashboard Loaded Successfully!"
+    );
+
 });
-
-resetResult();
-hideError();
-
-console.log("ChurnIQ JavaScript loaded successfully.");
